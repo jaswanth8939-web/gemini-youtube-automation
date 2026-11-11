@@ -27,6 +27,9 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: 💽 Setup FFmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+
       - name: 📦 Patch ImageMagick and Install Python Packages
         run: |
           POLICY_FILE=$(find /etc -name "policy.xml" 2>/dev/null | grep -i "ImageMagick" | head -n 1)
@@ -112,3 +115,11 @@ jobs:
 
             git commit -m "feat: Update content plan and demo GIF after daily video production"
             if git push; then
+              echo "✅ Pushed on attempt $attempt."
+              exit 0
+            fi
+            echo "⚠️ Push rejected on attempt $attempt — main moved again, retrying..."
+          done
+
+          echo "❌ Could not push after 3 attempts."
+          exit 1
