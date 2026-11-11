@@ -1,9 +1,9 @@
 name: Autonomous AI Course Generator
 
 on:
-  schedule:
-    - cron: '0 7 * * *' # 12:30 PM IST daily
   workflow_dispatch:
+  schedule:
+    - cron: '30 2 * * *'
 
 # A run takes far longer than the gap between a manual dispatch and the daily
 # schedule, so serialise them — two runs pushing to main race each other.
@@ -29,8 +29,8 @@ jobs:
 
       - name: 📦 Install dependencies and patch ImageMagick
         run: |
-          sudo apt-get update
-          sudo apt-get install -y imagemagick ffmpeg
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y imagemagick ffmpeg
           POLICY_FILE=$(find /etc -name "policy.xml" 2>/dev/null | grep -i "ImageMagick" | head -n 1)
           if [ -z "$POLICY_FILE" ]; then
             echo "❌ CRITICAL: Could not find ImageMagick's policy.xml file!"
