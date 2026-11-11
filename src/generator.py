@@ -141,31 +141,38 @@ def generate_curriculum(previous_titles=None):
 
 
 def generate_lesson_content(lesson_title):
-    """Generates the content for one long-form lesson and its promotional short."""
+   def generate_lesson_content(lesson_title):
+    """Generates the content for one long-form lesson and its promotional short with automatic retries."""
     print(f"🤖 Generating content for lesson: '{lesson_title}'...")
-    try:
-        client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-        prompt = f"""
-        You are creating a lesson for the 'AI for Developers by {YOUR_NAME}' series. The topic is '{lesson_title}'.
-        The style is: Assume the viewer is a beginner developer or non-tech person who wants to learn AI from scratch.
-        Use analogies and clear, simple language. Each concept must be explained from a developer's perspective, assuming no prior AI or ML knowledge.
+    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+    
+    prompt = f"""
+    You are creating a lesson for the 'AI for Developers by {YOUR_NAME}' series. The topic is '{lesson_title}'.
+    The style is: Assume the viewer is a beginner developer or non-tech person who wants to learn AI from scratch.
+    Use analogies and clear, simple language. Each concept must be explained from a developer's perspective, assuming no prior AI or ML knowledge.
 
-        Generate a JSON response with three keys:
-        1. "long_form_slides": A list of 7 to 8 slide objects for a longer, more detailed main video. Each object needs a "title" and "content" key.
-        2. "short_form_highlight": A single, punchy, 1-2 sentence summary for a YouTube Short.
-        3. "hashtags": A string of 5-7 relevant, space-separated hashtags for this lesson (e.g., "#GenerativeAI #LLM #Developer","#NeuralNetworks #BeginnerAI #AIforDevelopers").
+    Generate a JSON response with three keys:
+    1. "long_form_slides": A list of 7 to 8 slide objects for a longer, more detailed main video. Each object needs a "title" and "content" key.
+    2. "short_form_highlight": A single, punchy, 1-2 sentence summary for a YouTube Short.
+    3. "hashtags": A string of 5-7 relevant, space-separated hashtags for this lesson.
 
-        Return only valid JSON.
-        """
-        response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
-        json_string = response.text.strip().replace("```json", "").replace("```", "")
-        content = json.loads(json_string)
-        print("✅ Lesson content generated successfully.")
-        return content
-    except Exception as e:
-        print(f"❌ ERROR: Failed to generate lesson content: {e}")
-        raise
+    Return only valid JSON.
+    """
 
+    for attempt in range(1, 6):
+        try:
+            response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
+            json_string = response.text.strip().replace("```json", "").replace("```", "")
+            content = json.loads(json_string)
+            print("✅ Lesson content generated successfully.")
+            return content
+        except Exception as e:
+            print(f"⚠️ Attempt {attempt}/5 failed: {e}")
+            if attempt == 5:
+                print("❌ ERROR: Max retries reached. Google servers are completely unresponsive.")
+                raise
+            print("Waiting 30 seconds for server traffic to clear before retrying...")
+            time.sleep(30)
 
 # def generate_visuals(output_dir, video_type, slide_content=None, thumbnail_title=None, slide_number=0, total_slides=0):
 #     """Generates a single professional, PPT-style slide or a thumbnail."""
