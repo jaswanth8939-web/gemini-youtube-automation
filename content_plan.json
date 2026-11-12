@@ -1,0 +1,39 @@
+{
+  "lessons": [
+    {
+      "chapter": 1,
+      "part": 1,
+      "title": "Welcome to AI: Why Traditional Code is a Recipe and AI is a Chef",
+      "status": "pending",
+      "youtube_id": null
+    },
+    {
+      "chapter": 2,
+      "part": 1,
+      "title": "Prompt Engineering: Talking to Your LLM Effectively",
+      "status": "pending",
+      "youtube_id": null
+    },
+    {
+      "chapter": 3,
+      "part": 1,
+      "title": "Embeddings: Turning Words into Numbers for AI",
+      "status": "pending",
+      "youtube_id": null
+    },
+    {
+      "chapter": 4,
+      "part": 1,
+      "title": "Vector Databases: Giving Your AI a Super-Fast Memory",
+      "status": "pending",
+      "youtube_id": null
+    },
+    {
+      "chapter": 5,
+      "part": 1,
+      "title": "Retrieval-Augmented Generation (RAG): Making AI Factually Accurate",
+      "status": "pending",
+      "youtube_id": null
+    }
+  ]
+}
