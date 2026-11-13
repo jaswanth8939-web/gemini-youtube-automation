@@ -117,13 +117,14 @@ def generate_curriculum(previous_titles=None):
         history = f"The following lessons have already been created:\n{formatted}\n\nPlease continue from where this series left off.\n"
 
     prompt = f"""
-    You are an expert AI educator. Generate a curriculum for a YouTube series called 'AI for Developers by {YOUR_NAME}'.
+    You are an expert spiritual guide and viral YouTube strategist. 
+    Generate a curriculum for a YouTube Shorts series focused on daily prayers, spiritual warfare, Psalms, morning affirmations, and numerology life hacks.
     {history}
-    The style must be: 'Assume the viewer is a beginner or non-technical person starting their journey into AI as a developer.
-    Use simple real-world analogies, relatable examples, and then connect to technical concepts.'
-
-    The curriculum must guide a developer from absolute beginner to advanced AI, covering foundations like Generative AI, LLMs, Vector Databases, and Agentic AI...
-    ...then continue into deep AI topics like Reinforcement Learning, Transformers internals, multi-agent systems, tool use, LangGraph, AI architecture, and more.
+    Use viral, urgent, and highly clickable titles similar to:
+    - "Play This Psalm 91 Midnight Prayer"
+    - "Listen Before 6AM For A Financial Miracle"
+    - "Before Bed, Speak These 5 Words For An Overnight Miracle"
+    - "The 3-Second Declaration That Strips Negativity From Your Home"
 
     Respond with ONLY a valid JSON object. The object must contain a key "lessons" which is a list of 20 lesson objects.
     Each lesson object must have these keys: "chapter", "part", "title", "status" (defaulted to "pending"), and "youtube_id" (defaulted to null).
@@ -151,14 +152,16 @@ def generate_lesson_content(lesson_title):
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
     
     prompt = f"""
-    You are creating a lesson for the 'AI for Developers by {YOUR_NAME}' series. The topic is '{lesson_title}'.
-    The style is: Assume the viewer is a beginner developer or non-tech person who wants to learn AI from scratch.
-    Use analogies and clear, simple language. Each concept must be explained from a developer's perspective, assuming no prior AI or ML knowledge.
+    You are a viral YouTube Shorts scriptwriter in the spiritual and numerology niche.
+    Write a highly engaging, fast-paced script for the video titled: "{lesson_title}".
+    
+    The narration should be urgent, comforting, and deeply spiritual.
+    CRITICAL: The content text for the final slide MUST be exactly this: "To unlock your personalized path, click the link in the comments for your Daily Prayer and Numerology Guide."
 
     Generate a JSON response with three keys:
-    1. "long_form_slides": A list of 7 to 8 slide objects for a longer, more detailed main video. Each object needs a "title" and "content" key.
-    2. "short_form_highlight": A single, punchy, 1-2 sentence summary for a YouTube Short.
-    3. "hashtags": A string of 5-7 relevant, space-separated hashtags for this lesson.
+    1. "long_form_slides": A list of exactly 7 to 8 slide objects. Each object needs a "title" (1-2 word keywords for free stock footage like "galaxy", "nature", "sunset", "clouds") and a "content" key (the narration text).
+    2. "short_form_highlight": A highly optimized YouTube Title (under 60 characters).
+    3. "hashtags": A string of 5-7 relevant, space-separated viral hashtags for this lesson.
 
     Return only valid JSON.
     """
@@ -275,7 +278,7 @@ def generate_visuals(output_dir, video_type, slide_content=None, thumbnail_title
         # Footer
         footer_height = int(height * 0.06)
         draw.rectangle([0, height - footer_height, width, height], fill=(25, 40, 65, 200))
-        draw.text((40, height - footer_height + 12), f"AI for Developers by {YOUR_NAME}", font=footer_font, fill=(180, 180, 180))
+        draw.text((40, height - footer_height + 12), "Daily Prayer & Numerology", font=footer_font, fill=(180, 180, 180))
 
         if total_slides > 0:
             slide_num_text = f"Slide {slide_number} of {total_slides}"
