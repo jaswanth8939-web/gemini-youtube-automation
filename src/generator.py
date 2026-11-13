@@ -1,340 +1,188 @@
-# FILE: src/generator.py
-# FINAL, CLEAN VERSION: Compatible with per-slide audio sync, dynamic slides, and GitHub Actions.
-
 import os
 import json
-import time
 import random
+import urllib.parse
 import requests
-from io import BytesIO
-from google import genai
-from gtts import gTTS
-from gtts.tts import gTTSError
-from moviepy.editor import AudioFileClip, ImageClip, CompositeAudioClip, concatenate_videoclips, vfx
-from moviepy.config import change_settings
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from pathlib import Path
-from pydub import AudioSegment
+from google import genai
+from google.genai import types
+from pydantic import BaseModel
 
-# --- Configuration ---
-ASSETS_PATH = Path("assets")
-FONT_FILE = ASSETS_PATH / "fonts/arial.ttf"
-BACKGROUND_MUSIC_PATH = ASSETS_PATH / "music/bg_music.mp3"
-FALLBACK_THUMBNAIL_FONT = ImageFont.load_default()
-YOUR_NAME = "Chaitanya"
+# ==========================================
+# CONFIGURATION & API SETUP
+# ==========================================
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY") # Used for Pixabay API
 
-# Google's TTS endpoint throttles bursts from shared CI IPs. When it does, it answers
-# 200 OK with no audio stream, which gTTS surfaces as "Probable cause: Unknown".
-TTS_MAX_ATTEMPTS = 5
-TTS_BACKOFF_SECONDS = 5
-TTS_MIN_GAP_SECONDS = 2
-_last_tts_request = 0.0
+if not GOOGLE_API_KEY:
+    raise ValueError("CRITICAL: GOOGLE_API_KEY environment variable is not set.")
 
-# GitHub Actions compatibility for ImageMagick
-if os.name == 'posix':
-    change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
+client = genai.Client(api_key=GOOGLE_API_KEY)
+MODEL_ID = 'gemini-2.5-flash'
+
+PLAN_FILE = Path('content_plan.json')
+OUTPUT_DIR = Path('output')
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+# ==========================================
+# DATA MODELS (JSON SCHEMAS)
+# ==========================================
+class Lesson(BaseModel):
+    chapter: int
+    part: int
+    title: str
+    status: str = "pending"
+    youtube_id: str | None = None
+
+class Curriculum(BaseModel):
+    lessons: list[Lesson]
+
+class Slide(BaseModel):
+    image_search_query: str
+    narration_text: str
+
+class VideoScript(BaseModel):
+    youtube_title: str
+    youtube_description: str
+    youtube_tags: str
+    slides: list[Slide]
+
+# ==========================================
+# CORE FUNCTIONS
+# ==========================================
+def generate_curriculum() -> Curriculum:
+    """Generates a 20-lesson spiritual & numerology content plan."""
+    print("Generating new spiritual curriculum via Gemini...")
+    prompt = """
+    You are an expert spiritual guide and viral YouTube strategist. 
+    Generate a 20-video curriculum for a YouTube Shorts channel focused on daily prayers, 
+    spiritual warfare, Psalms, morning affirmations, and numerology life hacks. 
+    
+    Use viral, urgent, and highly clickable titles similar to:
+    - "Play This Psalm 91 Midnight Prayer"
+    - "Listen Before 6AM For A Financial Miracle"
+    - "Before Bed, Speak These 5 Words For An Overnight Miracle"
+    - "The 3-Second Declaration That Strips Negativity From Your Home"
+    
+    Structure it logically into chapters and parts.
+    """
+    
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=Curriculum,
+            temperature=0.7,
+        ),
+    )
+    return Curriculum.model_validate_json(response.text)
 
 
-def get_pexels_image(query, video_type):
-    """Searches for a relevant image on Pixabay and returns the image object."""
-    pixabay_api_key = os.getenv("PEXELS_API_KEY")
-    if not pixabay_api_key:
-        print("⚠️ PEXELS_API_KEY not found. Using solid color background.")
-        return None
+def generate_lesson_script(lesson_title: str) -> VideoScript:
+    """Generates the slides and narration for a specific spiritual lesson."""
+    print(f"Generating script for: '{lesson_title}'...")
+    prompt = f"""
+    You are a viral YouTube Shorts scriptwriter in the spiritual and numerology niche.
+    Write a highly engaging, fast-paced script for the video titled: "{lesson_title}".
+    
+    Requirements:
+    1. Create exactly 7 slides.
+    2. The narration should be urgent, comforting, and deeply spiritual.
+    3. The image_search_query must be simple, 1-2 word keywords suitable for free stock footage APIs (e.g., "galaxy", "nature", "clouds", "sunset", "waterfall", "stars", "mountains").
+    4. Provide a highly optimized YouTube Title (under 60 characters).
+    5. Provide a YouTube Description.
+    6. Provide a comma-separated list of viral tags.
+    """
+    
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=VideoScript,
+            temperature=0.7,
+        ),
+    )
+    
+    script_data = VideoScript.model_validate_json(response.text)
+    
+    # HARDCODED CTA STRATEGY (Slide 8)
+    # This ensures your digital product is pitched at the end of every single video
+    cta_slide = Slide(
+        image_search_query="peaceful sunrise",
+        narration_text="To unlock your personalized path, click the link in the comments for your Daily Prayer and Numerology Guide."
+    )
+    script_data.slides.append(cta_slide)
+    
+    return script_data
 
-    orientation = 'horizontal' if video_type == 'long' else 'vertical'
+
+def fetch_pixabay_image(query: str, save_path: str):
+    """Fetches an image from Pixabay using the mapped PEXELS_API_KEY."""
+    safe_query = urllib.parse.quote(query)
+    url = f"https://pixabay.com/api/?key={PEXELS_API_KEY}&q={safe_query}&image_type=photo&orientation=vertical&per_page=3"
+    
     try:
-        url = f"https://pixabay.com/api/?key={pixabay_api_key}&q={requests.utils.quote(query)}&image_type=photo&orientation={orientation}&per_page=3"
-        response = requests.get(url, timeout=15)
+        response = requests.get(url)
         response.raise_for_status()
         data = response.json()
+        
         if data.get('hits'):
-            image_url = data['hits'][0]['largeImageURL']
-            image_response = requests.get(image_url, timeout=15)
-            image_response.raise_for_status()
-            return Image.open(BytesIO(image_response.content)).convert("RGBA")
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Network error fetching Pixabay image for query '{query}': {e}")
+            image_url = random.choice(data['hits'])['largeImageURL']
+            img_data = requests.get(image_url).content
+            with open(save_path, 'wb') as handler:
+                handler.write(img_data)
+            print(f"  ✓ Downloaded image for query: '{query}'")
+        else:
+            print(f"  ⚠ No image found for '{query}', falling back to default.")
+            # Fallback to a generic spiritual search term if the specific one fails
+            fallback_url = f"https://pixabay.com/api/?key={PEXELS_API_KEY}&q=nature+clouds&image_type=photo&orientation=vertical&per_page=3"
+            fallback_data = requests.get(fallback_url).json()
+            if fallback_data.get('hits'):
+                img_data = requests.get(fallback_data['hits'][0]['largeImageURL']).content
+                with open(save_path, 'wb') as handler:
+                    handler.write(img_data)
+                    
     except Exception as e:
-        print(f"❌ General error fetching Pixabay image for query '{query}': {e}")
-    return None
+        print(f"  ❌ Failed to fetch image for '{query}': {e}")
 
 
-def _throttle_tts():
-    """Spaces out TTS requests so a burst doesn't trip Google's rate limiter."""
-    global _last_tts_request
-    elapsed = time.monotonic() - _last_tts_request
-    if elapsed < TTS_MIN_GAP_SECONDS:
-        time.sleep(TTS_MIN_GAP_SECONDS - elapsed)
-    _last_tts_request = time.monotonic()
-
-
-def text_to_speech(text, output_path):
-    """Converts text to speech using gTTS and ensures clean audio using WAV format."""
-    print(f"🎤 Converting script to speech...")
-    temp_mp3_path = str(output_path).replace('.mp3', '_temp.mp3')
-    wav_path = str(output_path.with_suffix('.wav'))
-
-    for attempt in range(1, TTS_MAX_ATTEMPTS + 1):
-        try:
-            _throttle_tts()
-            tts = gTTS(text=text, lang='en', slow=False)
-            tts.save(temp_mp3_path)
-
-            # A throttled response can still produce a file — just an empty/truncated one.
-            if os.path.getsize(temp_mp3_path) < 1024:
-                raise gTTSError("gTTS wrote an empty or truncated audio file.")
-
-            audio = AudioSegment.from_mp3(temp_mp3_path)
-            audio.export(wav_path, format="wav", codec="pcm_s16le")
-            os.remove(temp_mp3_path)
-
-            print(f"✅ Speech generated and converted to WAV successfully!")
-            return Path(wav_path)
-
-        except Exception as e:
-            if os.path.exists(temp_mp3_path):
-                os.remove(temp_mp3_path)
-
-            if attempt == TTS_MAX_ATTEMPTS:
-                print(f"❌ ERROR: Failed to generate speech after {TTS_MAX_ATTEMPTS} attempts: {e}")
-                raise
-
-            delay = TTS_BACKOFF_SECONDS * (2 ** (attempt - 1)) + random.uniform(0, 2)
-            print(f"⚠️ TTS attempt {attempt}/{TTS_MAX_ATTEMPTS} failed ({e}). Retrying in {delay:.1f}s...")
-            time.sleep(delay)
-
-
-def generate_curriculum(previous_titles=None):
-    """Generates the entire course curriculum using Gemini."""
-    print("🤖 No content plan found. Generating a new curriculum from scratch...")
-    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-
-    #Optional: Add prior lesson titles for continuation
-    history = ""
-    if previous_titles:
-        formatted = "\n".join([f"{i+1}. {t}" for i, t in enumerate(previous_titles)])
-        history = f"The following lessons have already been created:\n{formatted}\n\nPlease continue from where this series left off.\n"
-
-    prompt = f"""
-    You are an expert AI educator. Generate a curriculum for a YouTube series called 'AI for Developers by {YOUR_NAME}'.
-    {history}
-    The style must be: 'Assume the viewer is a beginner or non-technical person starting their journey into AI as a developer.
-    Use simple real-world analogies, relatable examples, and then connect to technical concepts.'
-
-    The curriculum must guide a developer from absolute beginner to advanced AI, covering foundations like Generative AI, LLMs, Vector Databases, and Agentic AI...
-    ...then continue into deep AI topics like Reinforcement Learning, Transformers internals, multi-agent systems, tool use, LangGraph, AI architecture, and more.
-
-    Respond with ONLY a valid JSON object. The object must contain a key "lessons" which is a list of 20 lesson objects.
-    Each lesson object must have these keys: "chapter", "part", "title", "status" (defaulted to "pending"), and "youtube_id" (defaulted to null).
-    """
-    
-    for attempt in range(1, 6):
-        try:
-            response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
-            json_string = response.text.strip().replace("```json", "").replace("```", "")
-            curriculum = json.loads(json_string)
-            print("✅ New curriculum generated successfully!")
-            return curriculum
-        except Exception as e:
-            print(f"⚠️ Curriculum Attempt {attempt}/5 failed: {e}")
-            if attempt == 5:
-                print(f"❌ CRITICAL ERROR: Failed to generate curriculum. {e}")
-                raise
-            print("Waiting 30 seconds for server traffic to clear before retrying...")
-            time.sleep(30)
-
-
-def generate_lesson_content(lesson_title):
-    """Generates the content for one long-form lesson and its promotional short with automatic retries."""
-    print(f"🤖 Generating content for lesson: '{lesson_title}'...")
-    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-    
-    prompt = f"""
-    You are creating a lesson for the 'AI for Developers by {YOUR_NAME}' series. The topic is '{lesson_title}'.
-    The style is: Assume the viewer is a beginner developer or non-tech person who wants to learn AI from scratch.
-    Use analogies and clear, simple language. Each concept must be explained from a developer's perspective, assuming no prior AI or ML knowledge.
-
-    Generate a JSON response with three keys:
-    1. "long_form_slides": A list of 7 to 8 slide objects for a longer, more detailed main video. Each object needs a "title" and "content" key.
-    2. "short_form_highlight": A single, punchy, 1-2 sentence summary for a YouTube Short.
-    3. "hashtags": A string of 5-7 relevant, space-separated hashtags for this lesson.
-
-    Return only valid JSON.
-    """
-
-    for attempt in range(1, 6):
-        try:
-            response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
-            json_string = response.text.strip().replace("```json", "").replace("```", "")
-            content = json.loads(json_string)
-            print("✅ Lesson content generated successfully.")
-            return content
-        except Exception as e:
-            print(f"⚠️ Attempt {attempt}/5 failed: {e}")
-            if attempt == 5:
-                print("❌ ERROR: Max retries reached. Google servers are completely unresponsive.")
-                raise
-            print("Waiting 30 seconds for server traffic to clear before retrying...")
-            time.sleep(30)
-
-
-def generate_visuals(output_dir, video_type, slide_content=None, thumbnail_title=None, slide_number=0, total_slides=0):
-    """Generates a single professional, PPT-style slide or a thumbnail with corrected alignment."""
-    output_dir.mkdir(exist_ok=True, parents=True)
-    is_thumbnail = thumbnail_title is not None
-
-    width, height = (1920, 1080) if video_type == 'long' else (1080, 1920)
-    title = thumbnail_title if is_thumbnail else slide_content.get("title", "")
-    bg_image = get_pexels_image(title, video_type)
-
-    if not bg_image:
-        bg_image = Image.new('RGBA', (width, height), color=(12, 17, 29))
-    bg_image = bg_image.resize((width, height)).filter(ImageFilter.GaussianBlur(5))
-    darken_layer = Image.new('RGBA', bg_image.size, (0, 0, 0, 150))
-    final_bg = Image.alpha_composite(bg_image, darken_layer).convert("RGB")
-
-    if is_thumbnail and video_type == 'long':
-        w, h = final_bg.size
-        if h > w:
-            print("⚠️ Detected vertical thumbnail for long video. Rotating and resizing to 1920x1080...")
-            final_bg = final_bg.transpose(Image.ROTATE_270).resize((1920, 1080))
-
-    draw = ImageDraw.Draw(final_bg)
-
-    try:
-        title_font = ImageFont.truetype(str(FONT_FILE), 80 if video_type == 'long' else 90)
-        content_font = ImageFont.truetype(str(FONT_FILE), 45 if video_type == 'long' else 55)
-        footer_font = ImageFont.truetype(str(FONT_FILE), 25 if video_type == 'long' else 35)
-    except IOError:
-        title_font = content_font = footer_font = FALLBACK_THUMBNAIL_FONT
-
-    if not is_thumbnail:
-        # Header background
-        header_height = int(height * 0.18)
-        draw.rectangle([0, 0, width, header_height], fill=(25, 40, 65, 200))
-
-        # Wrap title text if needed
-        words = title.split()
-        title_lines = []
-        current_line = ""
-        for word in words:
-            test_line = f"{current_line} {word}".strip()
-            bbox = draw.textbbox((0, 0), test_line, font=title_font)
-            if bbox[2] - bbox[0] < width * 0.9:
-                current_line = test_line
-            else:
-                title_lines.append(current_line)
-                current_line = word
-        title_lines.append(current_line)
-
-        # Center vertically in header
-        line_height = title_font.getbbox("A")[3] + 10
-        total_title_height = len(title_lines) * line_height
-        y_text = (header_height - total_title_height) / 2
-
-        for line in title_lines:
-            bbox = draw.textbbox((0, 0), line, font=title_font)
-            x = (width - (bbox[2] - bbox[0])) / 2
-            draw.text((x, y_text), line, font=title_font, fill=(255, 255, 255))
-            y_text += line_height
+def generate_content():
+    """Main workflow manager."""
+    # 1. Load or Generate Curriculum
+    if PLAN_FILE.exists():
+        with open(PLAN_FILE, 'r') as f:
+            plan = Curriculum.model_validate_json(f.read())
     else:
-        # Center title on thumbnail
-        bbox = draw.textbbox((0, 0), title, font=title_font)
-        x = (width - (bbox[2] - bbox[0])) / 2
-        y = (height - (bbox[3] - bbox[1])) / 2
-        draw.text((x, y), title, font=title_font, fill=(255, 255, 255), stroke_width=2, stroke_fill="black")
+        plan = generate_curriculum()
+        with open(PLAN_FILE, 'w') as f:
+            f.write(plan.model_dump_json(indent=2))
 
-    if not is_thumbnail:
-        # Main content block
-        content = slide_content.get("content", "")
-        is_special_slide = len(content.split()) < 10
+    # 2. Find next pending lesson
+    next_lesson = next((lesson for lesson in plan.lessons if lesson.status == "pending"), None)
+    
+    if not next_lesson:
+        print("🎉 All spiritual lessons in the current curriculum are complete!")
+        return
 
-        words = content.split()
-        lines = []
-        current_line = ""
-        for word in words:
-            test_line = f"{current_line} {word}".strip()
-            if draw.textbbox((0, 0), test_line, font=content_font)[2] < width * 0.85:
-                current_line = test_line
-            else:
-                lines.append(current_line)
-                current_line = word
-        lines.append(current_line)
+    # 3. Generate Script & Slides
+    script = generate_lesson_script(next_lesson.title)
+    
+    # 4. Save Script for TTS and Video processing stages
+    script_path = OUTPUT_DIR / 'current_script.json'
+    with open(script_path, 'w') as f:
+        f.write(script.model_dump_json(indent=2))
+        
+    print(f"Script saved to {script_path}")
 
-        line_height = content_font.getbbox("A")[3] + 15
-        total_text_height = len(lines) * line_height
-        y_text = (height - total_text_height) / 2 if is_special_slide else header_height + 100
+    # 5. Download Images for each slide
+    print("Downloading background images...")
+    for index, slide in enumerate(script.slides):
+        image_path = OUTPUT_DIR / f"image_{index}.jpg"
+        fetch_pixabay_image(slide.image_search_query, str(image_path))
+        
+    print("Content generation phase complete. Ready for video assembly.")
 
-        for line in lines:
-            bbox = draw.textbbox((0, 0), line, font=content_font)
-            x = (width - (bbox[2] - bbox[0])) / 2
-            draw.text((x, y_text), line, font=content_font, fill=(230, 230, 230))
-            y_text += line_height
-
-        # Footer
-        footer_height = int(height * 0.06)
-        draw.rectangle([0, height - footer_height, width, height], fill=(25, 40, 65, 200))
-        draw.text((40, height - footer_height + 12), f"AI for Developers by {YOUR_NAME}", font=footer_font, fill=(180, 180, 180))
-
-        if total_slides > 0:
-            slide_num_text = f"Slide {slide_number} of {total_slides}"
-            bbox = draw.textbbox((0, 0), slide_num_text, font=footer_font)
-            draw.text((width - bbox[2] - 40, height - footer_height + 12), slide_num_text, font=footer_font, fill=(180, 180, 180))
-
-    file_prefix = "thumbnail" if is_thumbnail else f"slide_{slide_number:02d}"
-    path = output_dir / f"{file_prefix}.png"
-    final_bg.save(path)
-    return str(path)
-
-
-def create_video(slide_paths, audio_paths, output_path, video_type):
-    """Creates a final video from slides and per-slide audio clips with optional background music."""
-    print(f"🎬 Creating {video_type} video...")
-    try:
-        if not slide_paths or not audio_paths or len(slide_paths) != len(audio_paths):
-            raise ValueError("Mismatch between slides and audio clips, or no slides provided.")
-
-        image_clips = []
-        for i, (img_path, audio_path) in enumerate(zip(slide_paths, audio_paths)):
-            audio_clip = AudioFileClip(str(audio_path))
-            duration = audio_clip.duration + 0.5  # Padding
-            img_clip = (
-                ImageClip(img_path)
-                .set_duration(duration)
-                .set_audio(audio_clip)
-                .fadein(0.5)
-                .fadeout(0.5)
-            )
-            image_clips.append(img_clip)
-
-        final_video = concatenate_videoclips(image_clips, method="compose")
-
-        if BACKGROUND_MUSIC_PATH.exists():
-            print("🎵 Adding background music...")
-            bg_music = AudioFileClip(str(BACKGROUND_MUSIC_PATH)).volumex(0.05)
-            if bg_music.duration < final_video.duration:
-                bg_music = bg_music.fx(vfx.loop, duration=final_video.duration)
-            else:
-                bg_music = bg_music.subclip(0, final_video.duration)
-
-            composite_audio = CompositeAudioClip([
-                final_video.audio.volumex(1.2),
-                bg_music
-            ])
-            final_video = final_video.set_audio(composite_audio)
-
-        final_video.write_videofile(
-            str(output_path),
-            fps=24,
-            codec="libx264",
-            audio_codec="aac",
-            audio_bitrate="192k",
-            preset="medium",
-            threads=4
-        )
-        print(f"✅ {video_type.capitalize()} video created successfully!")
-
-    except Exception as e:
-        print(f"❌ ERROR during video creation: {e}")
-        raise
+if __name__ == "__main__":
+    generate_content()
