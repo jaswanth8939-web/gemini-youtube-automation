@@ -1,5 +1,4 @@
 import os
-import json
 import random
 import urllib.parse
 import requests
@@ -7,6 +6,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
+from gtts import gTTS
 
 # ==========================================
 # CONFIGURATION & API SETUP
@@ -88,11 +88,12 @@ def generate_lesson_script(lesson_title: str) -> VideoScript:
     
     Requirements:
     1. Create exactly 7 slides.
-    2. The narration should be urgent, comforting, and deeply spiritual.
-    3. The image_search_query must be simple, 1-2 word keywords suitable for free stock footage APIs (e.g., "galaxy", "nature", "clouds", "sunset", "waterfall", "stars", "mountains").
-    4. Provide a highly optimized YouTube Title (under 60 characters).
-    5. Provide a YouTube Description.
-    6. Provide a comma-separated list of viral tags.
+    2. The narration should be urgent, comforting, and deeply spiritual. 
+    3. CRITICAL: The narration text for the final slide MUST be exactly this: "To unlock your personalized path, click the link in the comments for your Daily Prayer and Numerology Guide."
+    4. The image_search_query must be simple, 1-2 word keywords suitable for free stock footage APIs (e.g., "galaxy", "nature", "clouds", "sunset", "waterfall").
+    5. Provide a highly optimized YouTube Title (under 60 characters).
+    6. Provide a YouTube Description.
+    7. Provide a comma-separated list of viral tags.
     """
     
     response = client.models.generate_content(
@@ -105,17 +106,7 @@ def generate_lesson_script(lesson_title: str) -> VideoScript:
         ),
     )
     
-    script_data = VideoScript.model_validate_json(response.text)
-    
-    # HARDCODED CTA STRATEGY (Slide 8)
-    # This ensures your digital product is pitched at the end of every single video
-    cta_slide = Slide(
-        image_search_query="peaceful sunrise",
-        narration_text="To unlock your personalized path, click the link in the comments for your Daily Prayer and Numerology Guide."
-    )
-    script_data.slides.append(cta_slide)
-    
-    return script_data
+    return VideoScript.model_validate_json(response.text)
 
 
 def fetch_pixabay_image(query: str, save_path: str):
@@ -136,7 +127,6 @@ def fetch_pixabay_image(query: str, save_path: str):
             print(f"  ✓ Downloaded image for query: '{query}'")
         else:
             print(f"  ⚠ No image found for '{query}', falling back to default.")
-            # Fallback to a generic spiritual search term if the specific one fails
             fallback_url = f"https://pixabay.com/api/?key={PEXELS_API_KEY}&q=nature+clouds&image_type=photo&orientation=vertical&per_page=3"
             fallback_data = requests.get(fallback_url).json()
             if fallback_data.get('hits'):
@@ -148,9 +138,18 @@ def fetch_pixabay_image(query: str, save_path: str):
         print(f"  ❌ Failed to fetch image for '{query}': {e}")
 
 
+def text_to_speech(text: str, output_path: str):
+    """Restored TTS function required by main.py."""
+    try:
+        tts = gTTS(text=text, lang='en', tld='co.in')
+        tts.save(output_path)
+        print(f"  ✓ Saved audio to {output_path}")
+    except Exception as e:
+        print(f"  ❌ Failed to generate audio: {e}")
+
+
 def generate_lesson_content():
     """Main workflow manager."""
-    # 1. Load or Generate Curriculum
     if PLAN_FILE.exists():
         with open(PLAN_FILE, 'r') as f:
             plan = Curriculum.model_validate_json(f.read())
@@ -159,24 +158,20 @@ def generate_lesson_content():
         with open(PLAN_FILE, 'w') as f:
             f.write(plan.model_dump_json(indent=2))
 
-    # 2. Find next pending lesson
     next_lesson = next((lesson for lesson in plan.lessons if lesson.status == "pending"), None)
     
     if not next_lesson:
         print("🎉 All spiritual lessons in the current curriculum are complete!")
         return
 
-    # 3. Generate Script & Slides
     script = generate_lesson_script(next_lesson.title)
     
-    # 4. Save Script for TTS and Video processing stages
     script_path = OUTPUT_DIR / 'current_script.json'
     with open(script_path, 'w') as f:
         f.write(script.model_dump_json(indent=2))
         
     print(f"Script saved to {script_path}")
 
-    # 5. Download Images for each slide
     print("Downloading background images...")
     for index, slide in enumerate(script.slides):
         image_path = OUTPUT_DIR / f"image_{index}.jpg"
