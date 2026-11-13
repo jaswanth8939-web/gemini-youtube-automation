@@ -1,5 +1,4 @@
 import os
-import json
 import random
 import urllib.parse
 import requests
@@ -51,34 +50,6 @@ class VideoScript(BaseModel):
 # ==========================================
 # CORE FUNCTIONS
 # ==========================================
-def fetch_pixabay_image(query: str, save_path: str):
-    """Fetches an image from Pixabay using the mapped PEXELS_API_KEY."""
-    safe_query = urllib.parse.quote(query)
-    url = f"https://pixabay.com/api/?key={PEXELS_API_KEY}&q={safe_query}&image_type=photo&orientation=vertical&per_page=3"
-    
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('hits'):
-            image_url = random.choice(data['hits'])['largeImageURL']
-            img_data = requests.get(image_url).content
-            with open(save_path, 'wb') as handler:
-                handler.write(img_data)
-            print(f"  ✓ Downloaded image for query: '{query}'")
-        else:
-            print(f"  ⚠ No image found for '{query}', falling back to default.")
-            fallback_url = f"https://pixabay.com/api/?key={PEXELS_API_KEY}&q=nature+clouds&image_type=photo&orientation=vertical&per_page=3"
-            fallback_data = requests.get(fallback_url).json()
-            if fallback_data.get('hits'):
-                img_data = requests.get(fallback_data['hits'][0]['largeImageURL']).content
-                with open(save_path, 'wb') as handler:
-                    handler.write(img_data)
-                    
-    except Exception as e:
-        print(f"  ❌ Failed to fetch image for '{query}': {e}")
-
 def generate_curriculum() -> Curriculum:
     """Generates a 20-lesson spiritual & numerology content plan."""
     print("Generating new spiritual curriculum via Gemini...")
@@ -106,6 +77,7 @@ def generate_curriculum() -> Curriculum:
         ),
     )
     return Curriculum.model_validate_json(response.text)
+
 
 def generate_lesson_script(lesson_title: str) -> VideoScript:
     """Generates the slides and narration for a specific spiritual lesson."""
@@ -136,7 +108,47 @@ def generate_lesson_script(lesson_title: str) -> VideoScript:
     
     return VideoScript.model_validate_json(response.text)
 
-def generate_lesson_content(*args, **kwargs):
+
+def fetch_pixabay_image(query: str, save_path: str):
+    """Fetches an image from Pixabay using the mapped PEXELS_API_KEY."""
+    safe_query = urllib.parse.quote(query)
+    url = f"https://pixabay.com/api/?key={PEXELS_API_KEY}&q={safe_query}&image_type=photo&orientation=vertical&per_page=3"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('hits'):
+            image_url = random.choice(data['hits'])['largeImageURL']
+            img_data = requests.get(image_url).content
+            with open(save_path, 'wb') as handler:
+                handler.write(img_data)
+            print(f"  ✓ Downloaded image for query: '{query}'")
+        else:
+            print(f"  ⚠ No image found for '{query}', falling back to default.")
+            fallback_url = f"https://pixabay.com/api/?key={PEXELS_API_KEY}&q=nature+clouds&image_type=photo&orientation=vertical&per_page=3"
+            fallback_data = requests.get(fallback_url).json()
+            if fallback_data.get('hits'):
+                img_data = requests.get(fallback_data['hits'][0]['largeImageURL']).content
+                with open(save_path, 'wb') as handler:
+                    handler.write(img_data)
+                    
+    except Exception as e:
+        print(f"  ❌ Failed to fetch image for '{query}': {e}")
+
+
+def text_to_speech(text: str, output_path: str):
+    """Restored TTS function required by main.py."""
+    try:
+        tts = gTTS(text=text, lang='en', tld='co.in')
+        tts.save(output_path)
+        print(f"  ✓ Saved audio to {output_path}")
+    except Exception as e:
+        print(f"  ❌ Failed to generate audio: {e}")
+
+
+def generate_lesson_content():
     """Main workflow manager."""
     if PLAN_FILE.exists():
         with open(PLAN_FILE, 'r') as f:
@@ -144,4 +156,28 @@ def generate_lesson_content(*args, **kwargs):
     else:
         plan = generate_curriculum()
         with open(PLAN_FILE, 'w') as f:
-            f.
+            f.write(plan.model_dump_json(indent=2))
+
+    next_lesson = next((lesson for lesson in plan.lessons if lesson.status == "pending"), None)
+    
+    if not next_lesson:
+        print("🎉 All spiritual lessons in the current curriculum are complete!")
+        return
+
+    script = generate_lesson_script(next_lesson.title)
+    
+    script_path = OUTPUT_DIR / 'current_script.json'
+    with open(script_path, 'w') as f:
+        f.write(script.model_dump_json(indent=2))
+        
+    print(f"Script saved to {script_path}")
+
+    print("Downloading background images...")
+    for index, slide in enumerate(script.slides):
+        image_path = OUTPUT_DIR / f"image_{index}.jpg"
+        fetch_pixabay_image(slide.image_search_query, str(image_path))
+        
+    print("Content generation phase complete. Ready for video assembly.")
+
+if __name__ == "__main__":
+    generate_lesson_content()
