@@ -148,7 +148,7 @@ def fetch_pixabay_image(query: str, save_path: str):
         print(f"  ❌ Failed to fetch image for '{query}': {e}")
 
 
-def generate_content():
+def generate_lesson_content():
     """Main workflow manager."""
     # 1. Load or Generate Curriculum
     if PLAN_FILE.exists():
@@ -185,4 +185,4 @@ def generate_content():
     print("Content generation phase complete. Ready for video assembly.")
 
 if __name__ == "__main__":
-    generate_content()
+    generate_lesson_content()
