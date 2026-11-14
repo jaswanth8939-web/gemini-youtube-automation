@@ -1,4 +1,3 @@
-# FILE: src/uploader.py
 import os
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -76,7 +75,7 @@ def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None)
                 'title': sanitized_title,
                 'description': description,
                 'tags': tags.split(','),
-                'categoryId': '28' # 28 = Science & Technology
+                'categoryId': '22' # 22 = People & Blogs (Better for Spirituality)
             },
             'status': {
                 'privacyStatus': 'public', # 'private', 'public', or 'unlisted'
@@ -86,7 +85,6 @@ def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None)
 
         media = MediaFileUpload(str(video_path), chunksize=-1, resumable=True)
         
-        # This is the section that was cut off previously
         request = youtube.videos().insert(
             part=','.join(request_body.keys()),
             body=request_body,
@@ -103,16 +101,16 @@ def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None)
         print(f"✅ Video uploaded successfully! Video ID: {video_id}")
 
         if thumbnail_path and os.path.exists(thumbnail_path):
-            print(f"⬆️ Uploading thumbnail '{thumbnail_path}' for video ID: {video_id}...")
+            print(f"🖼️ Attempting to attach custom thumbnail: {thumbnail_path}")
             try:
                 thumbnail_media = MediaFileUpload(str(thumbnail_path))
                 youtube.thumbnails().set(
                     videoId=video_id,
                     media_body=thumbnail_media
                 ).execute()
-                print("✅ Thumbnail uploaded successfully!")
+                print("✅ Custom thumbnail successfully uploaded and attached!")
             except Exception as e:
-                print(f"❌ ERROR: Failed to upload thumbnail: {e}")
+                print(f"⚠️ Thumbnail failed (API Quota or Channel Permission error): {e}")
         else:
             print("⚠️ No thumbnail path provided or thumbnail file does not exist. Skipping thumbnail upload.")
 
