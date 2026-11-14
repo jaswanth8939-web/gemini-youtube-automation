@@ -77,6 +77,12 @@ def produce_lesson_videos(lesson):
     lesson_content = generate_lesson_content(lesson['title'])
 
     print("\n--- Producing Long-Form Video ---")
+    
+    long_thumb_path = generate_visuals(
+        output_dir=OUTPUT_DIR,
+        video_type='long',
+        thumbnail_title=lesson['title']
+    )
 
     intro_slide = {"title": lesson['title'], "content": "Welcome to your daily spiritual guidance."}
     outro_slide = {"title": "Amen.", "content": "Click the link in the comments for your Daily Prayer Guide.\n#Spirituality #DailyPrayer"}
@@ -109,15 +115,15 @@ def produce_lesson_videos(lesson):
 
     long_video_path = OUTPUT_DIR / f"long_video_{unique_id}.mp4"
     print(f"🎥 Creating long-form video at: {long_video_path}")
-    create_video(slide_paths, slide_audio_paths, long_video_path, 'long')
-
-    long_thumb_path = generate_visuals(
-        output_dir=OUTPUT_DIR,
-        video_type='long',
-        thumbnail_title=lesson['title']
-    )
+    create_video(slide_paths, slide_audio_paths, long_video_path, 'long', thumbnail_path=long_thumb_path)
 
     print("\n--- Producing Short Video ---")
+    short_thumb_path = generate_visuals(
+        output_dir=OUTPUT_DIR,
+        video_type='short',
+        thumbnail_title=f"Quick Prayer: {lesson['title']}"
+    )
+    
     short_script = (f"{lesson_content['short_form_highlight']}\n\n"
     f"Link to the full prayer is in the description below.")
     short_audio_wav_path = OUTPUT_DIR / f"short_audio_{unique_id}.wav"
@@ -138,13 +144,7 @@ def produce_lesson_videos(lesson):
 
     short_video_path = OUTPUT_DIR / f"short_video_{unique_id}.mp4"
     print(f"🎥 Creating short video at: {short_video_path}")
-    create_video([short_slide_path], [short_audio_path], short_video_path, 'short')
-
-    short_thumb_path = generate_visuals(
-        output_dir=OUTPUT_DIR,
-        video_type='short',
-        thumbnail_title=f"Quick Prayer: {lesson['title']}"
-    )
+    create_video([short_slide_path], [short_audio_path], short_video_path, 'short', thumbnail_path=short_thumb_path)
 
     print("\n📤 Uploading to YouTube...")
     hashtags = lesson_content.get("hashtags", "#Prayer #Spirituality #Faith #Psalm91")
