@@ -162,11 +162,17 @@ def generate_visuals(output_dir, video_type, slide_content=None, thumbnail_title
     return {"text_image": str(text_overlay_path), "bg_video": bg_video_path}
 
 
-def create_video(slide_data, audio_paths, output_path, video_type):
+def create_video(slide_data, audio_paths, output_path, video_type, thumbnail_path=None):
     """Composites the moving background video, the transparent CapCut text, and the Kokoro audio."""
     print(f"🎬 Assembling cinematic {video_type} video...")
     image_clips = []
     
+    # HARDCODE THUMBNAIL HACK: Insert the static thumbnail as the first 1 second of the video
+    if thumbnail_path and os.path.exists(thumbnail_path):
+        print("🖼️ Injecting thumbnail as first video frame to bypass API limits...")
+        thumb_clip = ImageClip(thumbnail_path).set_duration(1.0)
+        image_clips.append(thumb_clip)
+
     for i, (visuals, audio_path) in enumerate(zip(slide_data, audio_paths)):
         audio_clip = AudioFileClip(str(audio_path))
         duration = audio_clip.duration + 0.5
