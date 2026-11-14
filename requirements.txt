@@ -4,18 +4,16 @@ google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
 
-# Text-to-Speech and Video Editing
-gTTS
+# Video Editing and Image Processing
 moviepy==1.0.3
-
-# For Pexels API
-requests
-
-# For image processing (e.g., slides, thumbnails)
 Pillow==9.5.0
 
-# ✅ For MP3 to WAV conversion
+# API Requests
+requests
+
+# Audio Processing & Conversion
 pydub
 
-# ✅ For realistic Microsoft neural voices
-edge-tts
+# ✅ Kokoro ONNX for realistic Michael voice
+kokoro-onnx
+soundfile
