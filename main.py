@@ -85,7 +85,7 @@ def produce_lesson_videos(lesson):
     slide_scripts = [
         f"Welcome. Today’s spiritual message is titled: {lesson['title']}.",
         *[s['content'] for s in lesson_content['long_form_slides']],
-        "Thank you for joining us in prayer today. To unlock your personalized path, click the link in the comments for your daily prayer and numerology guide. May you be blessed."
+        "Thank you for joining us in prayer today. To unlock your personalized path, click the link in the comments for your daily prayer guide. May you be blessed."
     ]
 
     slide_audio_paths = []
@@ -147,9 +147,9 @@ def produce_lesson_videos(lesson):
     )
 
     print("\n📤 Uploading to YouTube...")
-    hashtags = lesson_content.get("hashtags", "#Prayer #Spirituality #Faith #Numerology")
+    hashtags = lesson_content.get("hashtags", "#Prayer #Spirituality #Faith #Psalm91")
     long_desc = f"Today's Message: {lesson['title']}\n\n{hashtags}\n\nMay this prayer bring peace and protection into your life."
-    long_tags = "Prayer, Spirituality, Numerology, Faith, Blessing, " + lesson['title'].replace(" ", ", ")
+    long_tags = "Prayer, Spirituality, Psalm 91, Midnight Prayer, Faith, Blessing, Christian, " + lesson['title'].replace(" ", ", ")
 
     long_video_id = upload_to_youtube(
         long_video_path,
@@ -186,4 +186,64 @@ def main():
     print(f"📁 OUTPUT_DIR: {OUTPUT_DIR.resolve()}")
 
     try:
-        OUTPUT_DIR.mkdir(exist
+        OUTPUT_DIR.mkdir(exist_ok=True)
+        print(f"📁 Created output folder: {OUTPUT_DIR.exists()}")
+        plan = get_content_plan()
+        pending = [(i, lesson) for i, lesson in enumerate(plan['lessons']) if lesson['status'] == 'pending']
+
+        if not pending:
+            print("🎉 All lessons produced! Generating new content plan to restart from scratch...")
+
+            previous_titles = [lesson['title'] for lesson in plan['lessons']]
+            new_plan = generate_curriculum(previous_titles=previous_titles)
+            update_content_plan(new_plan)
+            plan = new_plan
+            pending = [(i, lesson) for i, lesson in enumerate(new_plan['lessons']) if lesson['status'] == 'pending']
+            if not pending:
+                print("⚠️ Curriculum generated but no valid lessons found.")
+                return
+
+        failed_lessons = []
+        for lesson_index, lesson in pending[:LESSONS_PER_RUN]:
+            try:
+                video_id = produce_lesson_videos(lesson)
+                if video_id:
+                    for original_lesson in plan['lessons']:
+                        if original_lesson['title'].strip().lower() == lesson['title'].strip().lower():
+                            original_lesson['status'] = 'complete'
+                            original_lesson['youtube_id'] = video_id
+                            print(f"✅ Completed lesson: {lesson['title']}")
+                            break
+                    else:
+                        print(f"⚠️ Could not find lesson in plan to mark as complete: {lesson['title']}")
+                else:
+                    print(f"❌ Upload failed (no video ID returned): {lesson['title']}")
+                    failed_lessons.append(lesson['title'])
+            except Exception as e:
+                print(f"❌ Failed producing lesson: {lesson['title']}")
+                traceback.print_exc()
+                failed_lessons.append(lesson['title'])
+            finally:
+                update_content_plan(plan)
+                print("📦 Content plan saved.")
+
+        if failed_lessons:
+            print(f"\n❌ PIPELINE FAILED — {len(failed_lessons)} lesson(s) did not complete:")
+            for title in failed_lessons:
+                print(f"   - {title}")
+                sys.exit(1)
+
+    except Exception as e:
+        print("❌ Critical error in main()")
+        traceback.print_exc()
+        sys.exit(1)
+
+    try:
+        for file in OUTPUT_DIR.glob("*.wav"):
+            file.unlink()
+            print(f"🧹 Deleted: {file}")
+    except Exception as e:
+        print(f"⚠️ Could not clean up .wav files: {e}")
+
+if __name__ == "__main__":
+    main()
