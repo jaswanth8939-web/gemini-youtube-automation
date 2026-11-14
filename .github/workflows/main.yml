@@ -52,6 +52,11 @@ jobs:
           echo "${{ secrets.TOKEN_B64 }}" | base64 -d > token.json
         shell: bash
 
+      - name: 📦 Download Kokoro Voice Model
+        run: |
+          wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model/kokoro-v0_19.onnx
+          wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model/voices.json
+
       - name: 🚀 Run Autonomous Production Pipeline
         id: production-run
         env:
