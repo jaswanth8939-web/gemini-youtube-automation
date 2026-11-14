@@ -5,8 +5,6 @@ import json
 import datetime
 import time
 import traceback
-import subprocess
-import tempfile
 from pathlib import Path
 from src.generator import (
     generate_curriculum,
@@ -48,31 +46,25 @@ def update_content_plan(plan):
         json.dump(plan, f, indent=2)
 
 
-def text_to_speech_edge(text, output_path):
-    """Uses Microsoft Edge TTS for a realistic male voice."""
-    print("🎤 Converting script to speech using realistic voice...")
-    voice = "en-US-GuyNeural" # Realistic, calm male voice
-    mp3_path = str(output_path).replace('.mp3', '_temp.mp3')
+def text_to_speech_kokoro(text, output_path):
+    """Uses Kokoro ONNX for ultra-realistic Michael voice."""
+    print("🎤 Converting script to Kokoro Michael voice...")
+    from kokoro_onnx import Kokoro
+    import soundfile as sf
+    
+    # Load the model downloaded by the GitHub Action
+    kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
     wav_path = str(output_path.with_suffix('.wav'))
-
-    # Write text to a temporary file to avoid command-line length limits
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as f:
-        f.write(text)
-        temp_txt_path = f.name
-
+    
     try:
-        subprocess.run(["edge-tts", "--voice", voice, "--file", temp_txt_path, "--write-media", mp3_path], check=True)
-        os.remove(temp_txt_path)
+        # am_michael is the highly realistic American male voice
+        samples, sample_rate = kokoro.create(text, voice="am_michael", speed=1.0, lang="en-us")
+        sf.write(wav_path, samples, sample_rate)
         
-        from pydub import AudioSegment
-        audio = AudioSegment.from_mp3(mp3_path)
-        audio.export(wav_path, format="wav", codec="pcm_s16le")
-        if os.path.exists(mp3_path):
-            os.remove(mp3_path)
         print("✅ Speech generated successfully!")
         return Path(wav_path)
     except Exception as e:
-        print(f"❌ Failed to generate TTS: {e}")
+        print(f"❌ Failed to generate Kokoro TTS: {e}")
         raise
 
 
@@ -98,8 +90,8 @@ def produce_lesson_videos(lesson):
 
     slide_audio_paths = []
     for i, script in enumerate(slide_scripts):
-        audio_path = OUTPUT_DIR / f"audio_slide_{i+1}_{unique_id}.mp3"
-        wav_path = text_to_speech_edge(script, audio_path)
+        audio_path = OUTPUT_DIR / f"audio_slide_{i+1}_{unique_id}.wav"
+        wav_path = text_to_speech_kokoro(script, audio_path)
         slide_audio_paths.append(wav_path)
     print(f"🎧 Total slide audios: {len(slide_audio_paths)}")
 
@@ -128,8 +120,8 @@ def produce_lesson_videos(lesson):
     print("\n--- Producing Short Video ---")
     short_script = (f"{lesson_content['short_form_highlight']}\n\n"
     f"Link to the full prayer is in the description below.")
-    short_audio_mp3_path = OUTPUT_DIR / f"short_audio_{unique_id}.mp3"
-    short_audio_path = text_to_speech_edge(short_script, short_audio_mp3_path)
+    short_audio_wav_path = OUTPUT_DIR / f"short_audio_{unique_id}.wav"
+    short_audio_path = text_to_speech_kokoro(short_script, short_audio_wav_path)
 
     short_slide_dir = OUTPUT_DIR / f"slides_short_{unique_id}"
     short_slide_content = {
@@ -194,64 +186,4 @@ def main():
     print(f"📁 OUTPUT_DIR: {OUTPUT_DIR.resolve()}")
 
     try:
-        OUTPUT_DIR.mkdir(exist_ok=True)
-        print(f"📁 Created output folder: {OUTPUT_DIR.exists()}")
-        plan = get_content_plan()
-        pending = [(i, lesson) for i, lesson in enumerate(plan['lessons']) if lesson['status'] == 'pending']
-
-        if not pending:
-            print("🎉 All lessons produced! Generating new content plan to restart from scratch...")
-
-            previous_titles = [lesson['title'] for lesson in plan['lessons']]
-            new_plan = generate_curriculum(previous_titles=previous_titles)
-            update_content_plan(new_plan)
-            plan = new_plan
-            pending = [(i, lesson) for i, lesson in enumerate(new_plan['lessons']) if lesson['status'] == 'pending']
-            if not pending:
-                print("⚠️ Curriculum generated but no valid lessons found.")
-                return
-
-        failed_lessons = []
-        for lesson_index, lesson in pending[:LESSONS_PER_RUN]:
-            try:
-                video_id = produce_lesson_videos(lesson)
-                if video_id:
-                    for original_lesson in plan['lessons']:
-                        if original_lesson['title'].strip().lower() == lesson['title'].strip().lower():
-                            original_lesson['status'] = 'complete'
-                            original_lesson['youtube_id'] = video_id
-                            print(f"✅ Completed lesson: {lesson['title']}")
-                            break
-                    else:
-                        print(f"⚠️ Could not find lesson in plan to mark as complete: {lesson['title']}")
-                else:
-                    print(f"❌ Upload failed (no video ID returned): {lesson['title']}")
-                    failed_lessons.append(lesson['title'])
-            except Exception as e:
-                print(f"❌ Failed producing lesson: {lesson['title']}")
-                traceback.print_exc()
-                failed_lessons.append(lesson['title'])
-            finally:
-                update_content_plan(plan)
-                print("📦 Content plan saved.")
-
-        if failed_lessons:
-            print(f"\n❌ PIPELINE FAILED — {len(failed_lessons)} lesson(s) did not complete:")
-            for title in failed_lessons:
-                print(f"   - {title}")
-                sys.exit(1)
-
-    except Exception as e:
-        print("❌ Critical error in main()")
-        traceback.print_exc()
-        sys.exit(1)
-
-    try:
-        for file in OUTPUT_DIR.glob("*.wav"):
-            file.unlink()
-            print(f"🧹 Deleted: {file}")
-    except Exception as e:
-        print(f"⚠️ Could not clean up .wav files: {e}")
-
-if __name__ == "__main__":
-    main()
+        OUTPUT_DIR.mkdir(exist
