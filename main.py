@@ -5,14 +5,14 @@ import json
 import datetime
 import time
 import traceback
+import subprocess
+import tempfile
 from pathlib import Path
 from src.generator import (
     generate_curriculum,
     generate_lesson_content,
-    text_to_speech,
     generate_visuals,
-    create_video,
-    YOUR_NAME
+    create_video
 )
 from src.uploader import upload_to_youtube
 
@@ -48,6 +48,33 @@ def update_content_plan(plan):
         json.dump(plan, f, indent=2)
 
 
+def text_to_speech_edge(text, output_path):
+    """Uses Microsoft Edge TTS for a realistic male voice."""
+    print("🎤 Converting script to speech using realistic voice...")
+    voice = "en-US-GuyNeural" # Realistic, calm male voice
+    mp3_path = str(output_path).replace('.mp3', '_temp.mp3')
+    wav_path = str(output_path.with_suffix('.wav'))
+
+    # Write text to a temporary file to avoid command-line length limits
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as f:
+        f.write(text)
+        temp_txt_path = f.name
+
+    try:
+        subprocess.run(["edge-tts", "--voice", voice, "--file", temp_txt_path, "--write-media", mp3_path], check=True)
+        os.remove(temp_txt_path)
+        
+        from pydub import AudioSegment
+        audio = AudioSegment.from_mp3(mp3_path)
+        audio.export(wav_path, format="wav", codec="pcm_s16le")
+        if os.path.exists(mp3_path):
+            os.remove(mp3_path)
+        print("✅ Speech generated successfully!")
+        return Path(wav_path)
+    except Exception as e:
+        print(f"❌ Failed to generate TTS: {e}")
+        raise
+
 
 def produce_lesson_videos(lesson):
     print(f"\n▶️ Starting production for Lesson: '{lesson['title']}'")
@@ -59,20 +86,20 @@ def produce_lesson_videos(lesson):
 
     print("\n--- Producing Long-Form Video ---")
 
-    intro_slide = {"title": lesson['title'], "content": f"Chapter {lesson['chapter']} | Part {lesson['part']}"}
-    outro_slide = {"title": "Thanks for Watching!", "content": "Like, Share & Subscribe for more daily AI content!\n#AIforDevelopers"}
+    intro_slide = {"title": lesson['title'], "content": "Welcome to your daily spiritual guidance."}
+    outro_slide = {"title": "Amen.", "content": "Click the link in the comments for your Daily Prayer Guide.\n#Spirituality #DailyPrayer"}
     all_slides = [intro_slide] + lesson_content['long_form_slides'] + [outro_slide]
 
     slide_scripts = [
-        f"Hello and welcome to AI for Developers. I'm {YOUR_NAME} talking bot. Today’s lesson is titled {lesson['title']}.",
+        f"Welcome. Today’s spiritual message is titled: {lesson['title']}.",
         *[s['content'] for s in lesson_content['long_form_slides']],
-        "Thanks for watching! If you found this helpful, make sure to subscribe to our channel and hit the like button."
+        "Thank you for joining us in prayer today. To unlock your personalized path, click the link in the comments for your daily prayer and numerology guide. May you be blessed."
     ]
 
     slide_audio_paths = []
     for i, script in enumerate(slide_scripts):
         audio_path = OUTPUT_DIR / f"audio_slide_{i+1}_{unique_id}.mp3"
-        wav_path = text_to_speech(script, audio_path)
+        wav_path = text_to_speech_edge(script, audio_path)
         slide_audio_paths.append(wav_path)
     print(f"🎧 Total slide audios: {len(slide_audio_paths)}")
 
@@ -99,16 +126,15 @@ def produce_lesson_videos(lesson):
     )
 
     print("\n--- Producing Short Video ---")
-    # short_script = f"{lesson_content['short_form_highlight']}"
     short_script = (f"{lesson_content['short_form_highlight']}\n\n"
-    f"Link to the full lesson is in the description below.")
+    f"Link to the full prayer is in the description below.")
     short_audio_mp3_path = OUTPUT_DIR / f"short_audio_{unique_id}.mp3"
-    short_audio_path = text_to_speech(short_script, short_audio_mp3_path)
+    short_audio_path = text_to_speech_edge(short_script, short_audio_mp3_path)
 
     short_slide_dir = OUTPUT_DIR / f"slides_short_{unique_id}"
     short_slide_content = {
-        "title": "Quick Tip!",
-        "content": f"{lesson_content['short_form_highlight']}\n\n#AI for developers by chaitanya"
+        "title": "Daily Prayer",
+        "content": f"{lesson_content['short_form_highlight']}\n\n#DailyPrayer #Faith"
     }
     short_slide_path = generate_visuals(
         output_dir=short_slide_dir,
@@ -125,13 +151,13 @@ def produce_lesson_videos(lesson):
     short_thumb_path = generate_visuals(
         output_dir=OUTPUT_DIR,
         video_type='short',
-        thumbnail_title=f"Quick Tip: {lesson['title']}"
+        thumbnail_title=f"Quick Prayer: {lesson['title']}"
     )
 
     print("\n📤 Uploading to YouTube...")
-    hashtags = lesson_content.get("hashtags", "#AI #Developer #LearnAI")
-    long_desc = f"Part of the 'AI for Developers' series by {YOUR_NAME}.\n\nToday's Lesson: {lesson['title']}\n\n{hashtags}"
-    long_tags = "AI, Artificial Intelligence, Developer, Programming, Tutorial, " + lesson['title'].replace(" ", ", ")
+    hashtags = lesson_content.get("hashtags", "#Prayer #Spirituality #Faith #Numerology")
+    long_desc = f"Today's Message: {lesson['title']}\n\n{hashtags}\n\nMay this prayer bring peace and protection into your life."
+    long_tags = "Prayer, Spirituality, Numerology, Faith, Blessing, " + lesson['title'].replace(" ", ", ")
 
     long_video_id = upload_to_youtube(
         long_video_path,
@@ -146,17 +172,16 @@ def produce_lesson_videos(lesson):
         time.sleep(30)
         highlight = (lesson_content.get('short_form_highlight') or '').strip()
         if not highlight:
-            highlight = f"AI Quick Tip: {lesson['title']}"
+            highlight = f"Daily Prayer: {lesson['title']}"
         short_title = f"{highlight[:90].rstrip()} #Shorts"
-        # short_desc = f"Watch the full lesson with {YOUR_NAME} here: https://www.youtube.com/watch?v={long_video_id}\n\n#AI #Programming #Tech #Developer"
         short_desc = (f"{lesson_content['short_form_highlight']}\n\n"
-                      f"Watch the full lesson with {YOUR_NAME} here: https://www.youtube.com/watch?v={long_video_id}\n\n"
+                      f"Watch the full prayer here: https://www.youtube.com/watch?v={long_video_id}\n\n"
                       f"{hashtags}")
         upload_to_youtube(
             short_video_path,
             short_title.strip(),
             short_desc,
-            "AI,Shorts,TechTip",
+            "Prayer,Shorts,Spirituality,Faith",
             short_thumb_path
         )
         return long_video_id
@@ -164,7 +189,7 @@ def produce_lesson_videos(lesson):
 
 
 def main():
-    print("🚀 Starting Autonomous AI Course Generator")
+    print("🚀 Starting Autonomous Channel Generator")
     print(f"📁 Current working dir: {os.getcwd()}")
     print(f"📁 OUTPUT_DIR: {OUTPUT_DIR.resolve()}")
 
@@ -178,7 +203,7 @@ def main():
             print("🎉 All lessons produced! Generating new content plan to restart from scratch...")
 
             previous_titles = [lesson['title'] for lesson in plan['lessons']]
-            new_plan = generate_curriculum(previous_titles=previous_titles)  # 🔁 Pass prior titles
+            new_plan = generate_curriculum(previous_titles=previous_titles)
             update_content_plan(new_plan)
             plan = new_plan
             pending = [(i, lesson) for i, lesson in enumerate(new_plan['lessons']) if lesson['status'] == 'pending']
@@ -214,7 +239,7 @@ def main():
             print(f"\n❌ PIPELINE FAILED — {len(failed_lessons)} lesson(s) did not complete:")
             for title in failed_lessons:
                 print(f"   - {title}")
-            sys.exit(1)
+                sys.exit(1)
 
     except Exception as e:
         print("❌ Critical error in main()")
