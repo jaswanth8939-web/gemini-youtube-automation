@@ -16,3 +16,6 @@ Pillow==9.5.0
 
 # ✅ For MP3 to WAV conversion
 pydub
+
+# ✅ For realistic Microsoft neural voices
+edge-tts
