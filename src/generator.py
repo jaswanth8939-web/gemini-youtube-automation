@@ -159,7 +159,7 @@ def generate_lesson_content(lesson_title):
     CRITICAL: The content text for the final slide MUST be exactly this: "To unlock your personalized path, click the link in the comments for your Daily Prayer and Numerology Guide."
 
     Generate a JSON response with three keys:
-    1. "long_form_slides": A list of exactly 7 to 8 slide objects. Each object needs a "title" (1-2 word keywords for free stock footage like "galaxy", "nature", "sunset", "clouds") and a "content" key (the narration text).
+    1. 1. "long_form_slides": A list of exactly 25 to 30 slide objects. The "content" key for each slide must be a detailed, heavily descriptive paragraph of at least 70 to 100 words so the video length stretches to 10 minutes. Each object needs a "title" (1-2 word keywords for free stock footage like "galaxy", "nature", "sunset", "clouds").
     2. "short_form_highlight": A highly optimized YouTube Title (under 60 characters).
     3. "hashtags": A string of 5-7 relevant, space-separated viral hashtags for this lesson.
 
