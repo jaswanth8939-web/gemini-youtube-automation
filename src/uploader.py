@@ -1,121 +1,66 @@
 import os
+import time
 from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from pathlib import Path
 
-# Define the paths for the credential files in the root directory
-CLIENT_SECRETS_FILE = Path('client_secrets.json')
-CREDENTIALS_FILE = Path('token.json')
-YOUTUBE_UPLOAD_SCOPE = ["https://www.googleapis.com/auth/youtube.upload"]
+def get_youtube_service():
+    """Authenticates and returns the YouTube Data API service."""
+    creds = Credentials.from_authorized_user_file('token.json')
+    return build('youtube', 'v3', credentials=creds)
 
-
-def sanitize_title(title: str | None, max_length: int = 100) -> str:
-    """Return a YouTube-safe title that is non-empty and within the API limit."""
-    clean_title = str(title or "").replace("<", "").replace(">", "").replace("<", "").replace(">", "").strip()
-
-    if not clean_title:
-        clean_title = "Untitled Video"
-
-    if len(clean_title) > max_length:
-        if max_length <= 3:
-            return clean_title[:max_length]
-        clean_title = clean_title[: max_length - 3].rstrip() + "..."
-
-    return clean_title
-
-
-def get_authenticated_service():
-    """
-    Handles the entire OAuth2 flow and returns an authenticated YouTube service object.
-    This function is designed to work both locally and in automation.
-    """
-    credentials = None
+def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None, publish_at=None):
+    """Uploads video to YouTube, supports Scheduled Publishing, and attempts custom thumbnail."""
+    youtube = get_youtube_service()
+    is_short = "#shorts" in title.lower() or "shorts" in tags.lower()
     
-    # Check if we already have credentials stored from a previous run
-    if CREDENTIALS_FILE.exists():
-        print("INFO: Found existing credentials file.")
-        credentials = Credentials.from_authorized_user_file(str(CREDENTIALS_FILE), YOUTUBE_UPLOAD_SCOPE)
-
-    # If we don't have valid credentials, start the authentication flow
-    if not credentials or not credentials.valid:
-        # If credentials exist but are expired, try to refresh them automatically.
-        if credentials and credentials.expired and credentials.refresh_token:
-            print("INFO: Refreshing expired credentials...")
-            credentials.refresh(Request())
+    # If a publish time is provided, the API strictly requires the video to be uploaded as 'private'
+    privacy = 'private' if publish_at else 'public'
+    
+    status_obj = {
+        'privacyStatus': privacy,
+        'selfDeclaredMadeForKids': False
+    }
+    
+    if publish_at:
+        status_obj['publishAt'] = publish_at
+        print(f"⏰ Scheduling video to go public at: {publish_at} (UTC)")
+    
+    body = {
+        'snippet': {
+            'title': title,
+            'description': description,
+            'tags': tags.split(','),
+            'categoryId': '22'  # People & Blogs
+        },
+        'status': status_obj
+    }
+    
+    media = MediaFileUpload(str(video_path), chunksize=-1, resumable=True, mimetype='video/mp4')
+    request = youtube.videos().insert(part=','.join(body.keys()), body=body, media_body=media)
+    
+    print(f"⏳ Uploading video: {title}")
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            print(f"   Uploaded {int(status.progress() * 100)}%")
+            
+    video_id = response.get('id')
+    print(f"✅ Upload Complete! Video ID: {video_id}")
+    
+    if thumbnail_path and os.path.exists(thumbnail_path):
+        if is_short:
+            print("⚠️ Skipping custom thumbnail upload for Shorts (Blocked by YouTube API).")
         else:
-            # This is the part that runs on your local computer the very first time.
-            print("INFO: No valid credentials found. Starting new authentication flow...")
-            if not CLIENT_SECRETS_FILE.exists():
-                raise FileNotFoundError(f"CRITICAL ERROR: {CLIENT_SECRETS_FILE} not found. Please download it from Google Cloud Console.")
-            
-            flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRETS_FILE), scopes=YOUTUBE_UPLOAD_SCOPE)
-            
-            credentials = flow.run_local_server(port=0)
-        
-        # Save the new, fresh credentials for all future runs
-        with open(CREDENTIALS_FILE, 'w') as f:
-            f.write(credentials.to_json())
-        print(f"INFO: Credentials saved to {CREDENTIALS_FILE}")
-            
-    return build('youtube', 'v3', credentials=credentials)
-
-
-def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None):
-    """Uploads a video to YouTube with the given metadata and optionally a thumbnail."""
-    sanitized_title = sanitize_title(title)
-    print(f"⬆️ Uploading '{video_path}' to YouTube with title: {sanitized_title}")
-    try:
-        youtube = get_authenticated_service()
-        
-        request_body = {
-            'snippet': {
-                'title': sanitized_title,
-                'description': description,
-                'tags': tags.split(','),
-                'categoryId': '22' # 22 = People & Blogs (Better for Spirituality)
-            },
-            'status': {
-                'privacyStatus': 'public', # 'private', 'public', or 'unlisted'
-                'selfDeclaredMadeForKids': False
-            }
-        }
-
-        media = MediaFileUpload(str(video_path), chunksize=-1, resumable=True)
-        
-        request = youtube.videos().insert(
-            part=','.join(request_body.keys()),
-            body=request_body,
-            media_body=media
-        )
-
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                print(f"Uploaded {int(status.progress() * 100)}%.")
-                
-        video_id = response.get('id')
-        print(f"✅ Video uploaded successfully! Video ID: {video_id}")
-
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            print(f"🖼️ Attempting to attach custom thumbnail: {thumbnail_path}")
+            print("🖼️ Attempting to set custom thumbnail via API...")
             try:
-                thumbnail_media = MediaFileUpload(str(thumbnail_path))
                 youtube.thumbnails().set(
                     videoId=video_id,
-                    media_body=thumbnail_media
+                    media_body=MediaFileUpload(str(thumbnail_path))
                 ).execute()
-                print("✅ Custom thumbnail successfully uploaded and attached!")
+                print("✅ Custom thumbnail uploaded successfully!")
             except Exception as e:
-                print(f"⚠️ Thumbnail failed (API Quota or Channel Permission error): {e}")
-        else:
-            print("⚠️ No thumbnail path provided or thumbnail file does not exist. Skipping thumbnail upload.")
+                print(f"❌ Thumbnail upload failed (Often requires Phone Verification): {e}")
 
-        return video_id
-        
-    except Exception as e:
-        print(f"❌ ERROR: Failed to upload to YouTube. {e}")
-        raise
+    return video_id
