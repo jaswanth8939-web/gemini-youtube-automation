@@ -220,9 +220,10 @@ def main():
                     print(f"❌ Upload failed (no video ID returned): {lesson['title']}")
                     failed_lessons.append(lesson['title'])
             except Exception as e:
-               print(f"❌ Failed producing lesson: {lesson['title']}")
-    import traceback
-    traceback.print_exc()
+                print(f"❌ Failed producing lesson: {lesson['title']}")
+                import traceback
+                traceback.print_exc()
+                failed_lessons.append(lesson['title'])
             finally:
                 update_content_plan(plan)
                 print("📦 Content plan saved.")
@@ -231,7 +232,7 @@ def main():
             print(f"\n❌ PIPELINE FAILED — {len(failed_lessons)} lesson(s) did not complete:")
             for title in failed_lessons:
                 print(f"   - {title}")
-                sys.exit(1)
+            sys.exit(1)
 
     except Exception as e:
         print("❌ Critical error in main()")
