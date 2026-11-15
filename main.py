@@ -52,12 +52,10 @@ def text_to_speech_kokoro(text, output_path):
     from kokoro_onnx import Kokoro
     import soundfile as sf
     
-    # Load the model downloaded by the GitHub Action
     kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
     wav_path = str(output_path.with_suffix('.wav'))
     
     try:
-        # am_michael is the highly realistic American male voice
         samples, sample_rate = kokoro.create(text, voice="am_michael", speed=1.0, lang="en-us")
         sf.write(wav_path, samples, sample_rate)
         
@@ -99,7 +97,6 @@ def produce_lesson_videos(lesson):
         audio_path = OUTPUT_DIR / f"audio_slide_{i+1}_{unique_id}.wav"
         wav_path = text_to_speech_kokoro(script, audio_path)
         slide_audio_paths.append(wav_path)
-    print(f"🎧 Total slide audios: {len(slide_audio_paths)}")
 
     slide_dir = OUTPUT_DIR / f"slides_long_{unique_id}"
     slide_paths = []
@@ -146,27 +143,38 @@ def produce_lesson_videos(lesson):
     print(f"🎥 Creating short video at: {short_video_path}")
     create_video([short_slide_path], [short_audio_path], short_video_path, 'short', thumbnail_path=short_thumb_path)
 
-    print("\n📤 Uploading to YouTube...")
+    print("\n📤 Uploading to YouTube with Scheduling...")
     hashtags = lesson_content.get("hashtags", "#Prayer #Spirituality #Faith #Psalm91")
     long_desc = f"Today's Message: {lesson['title']}\n\n{hashtags}\n\nMay this prayer bring peace and protection into your life."
     long_tags = "Prayer, Spirituality, Psalm 91, Midnight Prayer, Faith, Blessing, Christian, " + lesson['title'].replace(" ", ", ")
+
+    # Calculate exact schedule times (UTC)
+    # Long video target: 09:00:00 UTC (4:00 AM EST / 2:30 PM IST)
+    now_utc = datetime.datetime.utcnow()
+    target_utc = now_utc.replace(hour=9, minute=0, second=0, microsecond=0)
+    # If 09:00 UTC has already passed today, schedule for tomorrow
+    if target_utc < now_utc:
+        target_utc += datetime.timedelta(days=1)
+    
+    long_publish_at = target_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+    # Short video target: 10:00:00 UTC (5:00 AM EST / 3:30 PM IST) - Space it 1 hour after the long video
+    short_publish_at = (target_utc + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
 
     long_video_id = upload_to_youtube(
         long_video_path,
         lesson['title'],
         long_desc,
         long_tags,
-        long_thumb_path
+        long_thumb_path,
+        publish_at=long_publish_at
     )
 
     if long_video_id:
         print("⏳ Waiting 30 seconds before uploading the short...")
         time.sleep(30)
-        highlight = (lesson_content.get('short_form_highlight') or '').strip()
-        if not highlight:
-            highlight = f"Daily Prayer: {lesson['title']}"
-        short_title = f"{highlight[:90].rstrip()} #Shorts"
-        short_desc = (f"{lesson_content['short_form_highlight']}\n\n"
+        
+        short_title = f"{lesson['title'][:80].rstrip()} #Shorts #Prayer"
+        short_desc = (f"{lesson_content.get('short_form_highlight', '')}\n\n"
                       f"Watch the full prayer here: https://www.youtube.com/watch?v={long_video_id}\n\n"
                       f"{hashtags}")
         upload_to_youtube(
@@ -174,7 +182,8 @@ def produce_lesson_videos(lesson):
             short_title.strip(),
             short_desc,
             "Prayer,Shorts,Spirituality,Faith",
-            short_thumb_path
+            short_thumb_path,
+            publish_at=short_publish_at
         )
         return long_video_id
     return None
@@ -187,20 +196,17 @@ def main():
 
     try:
         OUTPUT_DIR.mkdir(exist_ok=True)
-        print(f"📁 Created output folder: {OUTPUT_DIR.exists()}")
         plan = get_content_plan()
         pending = [(i, lesson) for i, lesson in enumerate(plan['lessons']) if lesson['status'] == 'pending']
 
         if not pending:
             print("🎉 All lessons produced! Generating new content plan to restart from scratch...")
-
             previous_titles = [lesson['title'] for lesson in plan['lessons']]
             new_plan = generate_curriculum(previous_titles=previous_titles)
             update_content_plan(new_plan)
             plan = new_plan
             pending = [(i, lesson) for i, lesson in enumerate(new_plan['lessons']) if lesson['status'] == 'pending']
             if not pending:
-                print("⚠️ Curriculum generated but no valid lessons found.")
                 return
 
         failed_lessons = []
@@ -214,8 +220,6 @@ def main():
                             original_lesson['youtube_id'] = video_id
                             print(f"✅ Completed lesson: {lesson['title']}")
                             break
-                    else:
-                        print(f"⚠️ Could not find lesson in plan to mark as complete: {lesson['title']}")
                 else:
                     print(f"❌ Upload failed (no video ID returned): {lesson['title']}")
                     failed_lessons.append(lesson['title'])
@@ -229,9 +233,7 @@ def main():
                 print("📦 Content plan saved.")
 
         if failed_lessons:
-            print(f"\n❌ PIPELINE FAILED — {len(failed_lessons)} lesson(s) did not complete:")
-            for title in failed_lessons:
-                print(f"   - {title}")
+            print(f"\n❌ PIPELINE FAILED — {len(failed_lessons)} lesson(s) did not complete")
             sys.exit(1)
 
     except Exception as e:
@@ -242,9 +244,8 @@ def main():
     try:
         for file in OUTPUT_DIR.glob("*.wav"):
             file.unlink()
-            print(f"🧹 Deleted: {file}")
-    except Exception as e:
-        print(f"⚠️ Could not clean up .wav files: {e}")
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     main()
