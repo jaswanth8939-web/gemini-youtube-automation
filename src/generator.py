@@ -66,7 +66,7 @@ def generate_lesson_content(lesson_title):
     Write a highly engaging script for the video titled: "{lesson_title}".
     
     CRITICAL INSTRUCTIONS:
-    1. "long_form_slides": A list of exactly 10 to 12 slide objects. The "content" key for each slide must be a detailed paragraph of at least 70 to 100 words so the video length stretches to about 3 to 5 minutes.
+    1. "long_form_slides": A list of exactly 10 to 12 slide objects. The "content" key for each slide must be a detailed paragraph of at least 70 to 100 words so the video length stretches to about 3 to 5 minutes. 
     2. The "title" key for each slide MUST be a 1-2 word query for beautiful, abstract, or nature VIDEO backgrounds (e.g., 'nebula', 'ocean', 'forest', 'clouds', 'sunset', 'mountains'). ABSOLUTELY NO PEOPLE, FACES, CITIES, OR CHARACTERS to appeal to a broad US/UK audience.
     3. The final slide "content" MUST be exactly: "To unlock your personalized path, click the link in the comments for your Daily Prayer Guide."
     4. "short_form_highlight": A highly optimized YouTube Title (under 60 characters).
@@ -111,20 +111,22 @@ def generate_visuals(output_dir, video_type, slide_content=None, thumbnail_title
     """Generates CapCut style text on a transparent PNG and fetches a background video."""
     output_dir.mkdir(exist_ok=True, parents=True)
     is_thumbnail = thumbnail_title is not None
-    width, height = (1920, 1080) if video_type == 'long' else (1080, 1920)
+    
+    # ⚡ OPTIMIZATION: Reduced resolution from 1080p to 720p for massive speedup
+    width, height = (1280, 720) if video_type == 'long' else (720, 1280)
     
     title = thumbnail_title if is_thumbnail else slide_content.get("title", "galaxy")
     
-    # If it's a thumbnail, generate a static image. If it's a slide, just make a transparent text overlay.
     if is_thumbnail:
         bg_image = Image.new('RGBA', (width, height), color=(12, 17, 29))
         draw = ImageDraw.Draw(bg_image)
     else:
-        bg_image = Image.new('RGBA', (width, height), (0, 0, 0, 0)) # Fully transparent
+        bg_image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(bg_image)
 
     try:
-        content_font = ImageFont.truetype(str(FONT_FILE), 55 if video_type == 'long' else 65)
+        # Adjusted font sizes slightly to match the new 720p resolution
+        content_font = ImageFont.truetype(str(FONT_FILE), 40 if video_type == 'long' else 50)
     except IOError:
         content_font = ImageFont.load_default()
 
@@ -144,7 +146,6 @@ def generate_visuals(output_dir, video_type, slide_content=None, thumbnail_title
     line_height = content_font.getbbox("A")[3] + 15
     y_text = (height - (len(lines) * line_height)) / 2
 
-    # Draw CapCut style text: White fill with thick black stroke
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=content_font)
         x = (width - (bbox[2] - bbox[0])) / 2
@@ -157,7 +158,6 @@ def generate_visuals(output_dir, video_type, slide_content=None, thumbnail_title
     if is_thumbnail:
         return str(text_overlay_path)
     
-    # Return both the text overlay AND the moving video background
     bg_video_path = get_pixabay_video(title)
     return {"text_image": str(text_overlay_path), "bg_video": bg_video_path}
 
@@ -167,7 +167,6 @@ def create_video(slide_data, audio_paths, output_path, video_type, thumbnail_pat
     print(f"🎬 Assembling cinematic {video_type} video...")
     image_clips = []
     
-    # HARDCODE THUMBNAIL HACK: Insert the static thumbnail as the first 1 second of the video
     if thumbnail_path and os.path.exists(thumbnail_path):
         print("🖼️ Injecting thumbnail as first video frame to bypass API limits...")
         thumb_clip = ImageClip(thumbnail_path).set_duration(1.0)
@@ -177,21 +176,28 @@ def create_video(slide_data, audio_paths, output_path, video_type, thumbnail_pat
         audio_clip = AudioFileClip(str(audio_path))
         duration = audio_clip.duration + 0.5
         
-        # Load moving background video
         if visuals['bg_video']:
             bg_clip = VideoFileClip(visuals['bg_video']).without_audio()
+            
+            # Resize the background video to fit our faster 720p canvas
+            if video_type == 'long':
+                bg_clip = bg_clip.resize(height=720)
+            else:
+                bg_clip = bg_clip.resize(height=1280)
+                
             if bg_clip.duration < duration:
                 bg_clip = bg_clip.fx(vfx.loop, duration=duration)
             else:
                 bg_clip = bg_clip.subclip(0, duration)
         else:
             from moviepy.editor import ColorClip
-            bg_clip = ColorClip(size=(1920,1080) if video_type=='long' else (1080,1920), color=(12,17,29), duration=duration)
+            bg_clip = ColorClip(size=(1280,720) if video_type=='long' else (720,1280), color=(12,17,29), duration=duration)
 
-        # Layer the CapCut text on top
         txt_clip = ImageClip(visuals['text_image']).set_duration(duration)
-        slide_clip = CompositeVideoClip([bg_clip, txt_clip]).set_audio(audio_clip).fadein(0.5).fadeout(0.5)
+        slide_clip = CompositeVideoClip([bg_clip.set_position("center"), txt_clip]).set_audio(audio_clip).fadein(0.5).fadeout(0.5)
         image_clips.append(slide_clip)
 
     final_video = concatenate_videoclips(image_clips, method="compose")
-    final_video.write_videofile(str(output_path), fps=24, codec="libx264", audio_codec="aac", preset="ultrafast", threads=4)
+    
+    # ⚡ OPTIMIZATION: Reduced FPS to 15 and kept ultrafast preset for maximum render speed
+    final_video.write_videofile(str(output_path), fps=15, codec="libx264", audio_codec="aac", preset="ultrafast", threads=4)
