@@ -194,4 +194,4 @@ def create_video(slide_data, audio_paths, output_path, video_type, thumbnail_pat
         image_clips.append(slide_clip)
 
     final_video = concatenate_videoclips(image_clips, method="compose")
-    final_video.write_videofile(str(output_path), fps=24, codec="libx264", audio_codec="aac", preset="medium", threads=4)
+    final_video.write_videofile(str(output_path), fps=24, codec="libx264", audio_codec="aac", preset="ultrafast", threads=4)
