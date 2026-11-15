@@ -66,7 +66,7 @@ def generate_lesson_content(lesson_title):
     Write a highly engaging script for the video titled: "{lesson_title}".
     
     CRITICAL INSTRUCTIONS:
-    1. "long_form_slides": A list of exactly 25 to 30 slide objects. The "content" key for each slide must be a detailed paragraph of at least 70 to 100 words so the video length stretches to 10 minutes. 
+    1. "long_form_slides": A list of exactly 10 to 12 slide objects. The "content" key for each slide must be a detailed paragraph of at least 70 to 100 words so the video length stretches to about 3 to 5 minutes.
     2. The "title" key for each slide MUST be a 1-2 word query for beautiful, abstract, or nature VIDEO backgrounds (e.g., 'nebula', 'ocean', 'forest', 'clouds', 'sunset', 'mountains'). ABSOLUTELY NO PEOPLE, FACES, CITIES, OR CHARACTERS to appeal to a broad US/UK audience.
     3. The final slide "content" MUST be exactly: "To unlock your personalized path, click the link in the comments for your Daily Prayer Guide."
     4. "short_form_highlight": A highly optimized YouTube Title (under 60 characters).
