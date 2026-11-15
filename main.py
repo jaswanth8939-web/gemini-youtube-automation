@@ -220,9 +220,9 @@ def main():
                     print(f"❌ Upload failed (no video ID returned): {lesson['title']}")
                     failed_lessons.append(lesson['title'])
             except Exception as e:
-                print(f"❌ Failed producing lesson: {lesson['title']}")
-                traceback.print_exc()
-                failed_lessons.append(lesson['title'])
+               print(f"❌ Failed producing lesson: {lesson['title']}")
+    import traceback
+    traceback.print_exc()
             finally:
                 update_content_plan(plan)
                 print("📦 Content plan saved.")
