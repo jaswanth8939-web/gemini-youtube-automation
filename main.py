@@ -53,7 +53,7 @@ def text_to_speech_kokoro(text, output_path):
     import soundfile as sf
     
     # Load the model downloaded by the GitHub Action
-    kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
+    kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
     wav_path = str(output_path.with_suffix('.wav'))
     
     try:
