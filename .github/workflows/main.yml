@@ -28,7 +28,9 @@ jobs:
           cache: 'pip'
 
       - name: 💽 Setup FFmpeg
-        uses: FedericoCarboni/setup-ffmpeg@v3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
 
       - name: 📦 Patch ImageMagick and Install Python Packages
         run: |
