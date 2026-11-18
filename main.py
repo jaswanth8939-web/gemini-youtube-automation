@@ -149,15 +149,12 @@ def produce_lesson_videos(lesson):
     long_tags = "Prayer, Spirituality, Psalm 91, Midnight Prayer, Faith, Blessing, Christian, " + lesson['title'].replace(" ", ", ")
 
     # Calculate exact schedule times (UTC)
-    # Long video target: 09:00:00 UTC (4:00 AM EST / 2:30 PM IST)
     now_utc = datetime.datetime.utcnow()
     target_utc = now_utc.replace(hour=9, minute=0, second=0, microsecond=0)
-    # If 09:00 UTC has already passed today, schedule for tomorrow
     if target_utc < now_utc:
         target_utc += datetime.timedelta(days=1)
     
     long_publish_at = target_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-    # Short video target: 10:00:00 UTC (5:00 AM EST / 3:30 PM IST) - Space it 1 hour after the long video
     short_publish_at = (target_utc + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
 
     long_video_id = upload_to_youtube(
@@ -225,7 +222,6 @@ def main():
                     failed_lessons.append(lesson['title'])
             except Exception as e:
                 print(f"❌ Failed producing lesson: {lesson['title']}")
-                import traceback
                 traceback.print_exc()
                 failed_lessons.append(lesson['title'])
             finally:
@@ -237,15 +233,10 @@ def main():
             sys.exit(1)
 
     except Exception as e:
-        print("❌ Critical error in main()")
+        print(f"❌ CRITICAL ERROR IN PIPELINE: {e}")
         traceback.print_exc()
         sys.exit(1)
 
-    try:
-        for file in OUTPUT_DIR.glob("*.wav"):
-            file.unlink()
-    except Exception:
-        pass
-
 if __name__ == "__main__":
     main()
+    
