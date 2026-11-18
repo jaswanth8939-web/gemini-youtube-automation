@@ -48,8 +48,11 @@ def generate_curriculum(previous_titles=None):
             json_string = response.text.strip().replace("```json", "").replace("```", "")
             return json.loads(json_string)
         except Exception as e:
-            if attempt == 5: raise
-            time.sleep(30)
+            print(f"⚠️ Gemini API Error on Curriculum (Attempt {attempt}/5): {e}")
+            if attempt == 5: 
+                raise
+            print("⏳ Retrying in 60 seconds due to API limits/overload...")
+            time.sleep(60)
 
 def generate_lesson_content(lesson_title):
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
@@ -69,8 +72,11 @@ def generate_lesson_content(lesson_title):
             json_string = response.text.strip().replace("```json", "").replace("```", "")
             return json.loads(json_string)
         except Exception as e:
-            if attempt == 5: raise
-            time.sleep(30)
+            print(f"⚠️ Gemini API Error on Lesson Script (Attempt {attempt}/5): {e}")
+            if attempt == 5: 
+                raise
+            print("⏳ Retrying in 60 seconds due to API limits/overload...")
+            time.sleep(60)
 
 def get_pixabay_video(query):
     pixabay_api_key = os.getenv("PEXELS_API_KEY")
@@ -162,4 +168,13 @@ def create_video(slide_data, audio_paths, output_path, video_type, thumbnail_pat
         image_clips.append(slide_clip)
 
     final_video = concatenate_videoclips(image_clips, method="compose")
-    final_video.write_videofile(str(output_path), fps=15, codec="libx264", audio_codec="aac", preset="ultrafast", threads=4)
+    final_video.write_videofile(
+        str(output_path), 
+        fps=15, 
+        codec="libx264", 
+        audio_codec="aac", 
+        preset="ultrafast", 
+        threads=4,
+        ffmpeg_params=["-y"]
+    )
+    
