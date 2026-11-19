@@ -17,6 +17,45 @@ OUTPUT_DIR = Path("output")
 if os.name == 'posix':
     change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
 
+# Primary model first, followed by reliable fallbacks if Google servers are overloaded
+GEMINI_MODELS = [
+    'gemini-3.8-flash',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash'
+]
+
+# Pure nature queries to guarantee no people or crowds appear
+SAFE_NATURE_QUERIES = [
+    "starry night sky",
+    "golden sunrise clouds",
+    "peaceful ocean waves",
+    "misty forest",
+    "nebula galaxy",
+    "calm mountain lake",
+    "flowing waterfall",
+    "sunset sky",
+    "northern lights"
+]
+
+def call_gemini_with_fallback(client, prompt, task_name="Request"):
+    """Tries each model with retries before falling back to the next available model."""
+    last_error = None
+    for model_name in GEMINI_MODELS:
+        for attempt in range(1, 3):  # 2 attempts per model
+            try:
+                print(f"🤖 Calling {model_name} for {task_name} (Attempt {attempt}/2)...")
+                response = client.models.generate_content(model=model_name, contents=prompt)
+                json_string = response.text.strip().replace("```json", "").replace("```", "")
+                return json.loads(json_string)
+            except Exception as e:
+                last_error = e
+                print(f"⚠️ {model_name} failed on {task_name} (Attempt {attempt}/2): {e}")
+                if attempt < 2:
+                    print("⏳ Waiting 30 seconds before retrying...")
+                    time.sleep(30)
+        print(f"🔄 Switching away from {model_name} due to repeated errors...")
+    raise last_error
+
 def generate_curriculum(previous_titles=None):
     print("🤖 No content plan found. Generating a new curriculum from scratch...")
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
@@ -42,17 +81,7 @@ def generate_curriculum(previous_titles=None):
     Respond with ONLY a valid JSON object. The object must contain a key "lessons" which is a list of 20 lesson objects.
     Each lesson object must have these keys: "chapter", "part", "title", "status" (defaulted to "pending"), and "youtube_id" (defaulted to null).
     """
-    for attempt in range(1, 6):
-        try:
-            response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
-            json_string = response.text.strip().replace("```json", "").replace("```", "")
-            return json.loads(json_string)
-        except Exception as e:
-            print(f"⚠️ Gemini API Error on Curriculum (Attempt {attempt}/5): {e}")
-            if attempt == 5: 
-                raise
-            print("⏳ Retrying in 60 seconds due to API limits/overload...")
-            time.sleep(60)
+    return call_gemini_with_fallback(client, prompt, task_name="Curriculum")
 
 def generate_lesson_content(lesson_title):
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
@@ -66,34 +95,40 @@ def generate_lesson_content(lesson_title):
     5. "hashtags": A string of 5-7 relevant, space-separated viral hashtags.
     Return only valid JSON.
     """
-    for attempt in range(1, 6):
-        try:
-            response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
-            json_string = response.text.strip().replace("```json", "").replace("```", "")
-            return json.loads(json_string)
-        except Exception as e:
-            print(f"⚠️ Gemini API Error on Lesson Script (Attempt {attempt}/5): {e}")
-            if attempt == 5: 
-                raise
-            print("⏳ Retrying in 60 seconds due to API limits/overload...")
-            time.sleep(60)
+    return call_gemini_with_fallback(client, prompt, task_name="Lesson Script")
 
 def get_pixabay_video(query):
     pixabay_api_key = os.getenv("PEXELS_API_KEY")
     if not pixabay_api_key: return None
-    safe_query = requests.utils.quote(f"{query} nature background")
+
+    # Replace generic/religious terms that trigger crowds with pure nature queries
+    q_lower = str(query).lower()
+    if any(word in q_lower for word in ["prayer", "daily", "amen", "god", "jesus", "bible", "psalm", "church"]):
+        clean_query = random.choice(SAFE_NATURE_QUERIES)
+    else:
+        clean_query = f"{query} nature"
+
+    safe_query = requests.utils.quote(clean_query)
     try:
-        url = f"https://pixabay.com/api/videos/?key={pixabay_api_key}&q={safe_query}&video_type=film"
+        url = f"https://pixabay.com/api/videos/?key={pixabay_api_key}&q={safe_query}&video_type=film&category=nature"
         res = requests.get(url).json()
-        if res.get('hits'):
-            video_url = res['hits'][0]['videos']['medium']['url']
+        hits = res.get('hits', [])
+        if not hits:
+            # Fallback to a guaranteed nature query if the specific search returned nothing
+            fallback_q = requests.utils.quote(random.choice(SAFE_NATURE_QUERIES))
+            url = f"https://pixabay.com/api/videos/?key={pixabay_api_key}&q={fallback_q}&video_type=film&category=nature"
+            hits = requests.get(url).json().get('hits', [])
+
+        if hits:
+            chosen_hit = random.choice(hits[:10])
+            video_url = chosen_hit['videos']['medium']['url']
             vid_data = requests.get(video_url)
             path = OUTPUT_DIR / f"bg_{random.randint(10000,99999)}.mp4"
             with open(path, 'wb') as f:
                 f.write(vid_data.content)
             return str(path)
     except Exception as e:
-        print(f"❌ Failed to fetch video for {query}: {e}")
+        print(f"❌ Failed to fetch video for {clean_query}: {e}")
     return None
 
 def generate_visuals(output_dir, video_type, slide_content=None, thumbnail_title=None, slide_number=0, total_slides=0):
