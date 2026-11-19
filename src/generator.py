@@ -20,8 +20,9 @@ if os.name == 'posix':
 # Primary model first, followed by reliable fallbacks if Google servers are overloaded
 GEMINI_MODELS = [
     'gemini-3.8-flash',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash'
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite'
 ]
 
 # Pure nature queries to guarantee no people or crowds appear
